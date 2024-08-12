@@ -1,37 +1,42 @@
 const std = @import("std");
-const zlib = @import("zlib.zig");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     // Modules available to downstream dependencies
-    _ = b.addModule("zlib", .{
-        .source_file = .{ .path = (comptime thisDir()) ++ "/src/main.zig" },
+    const lib = b.addStaticLibrary(.{
+        .name = "zlib",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-
-    const lib = zlib.create(b, target, optimize);
-    b.installArtifact(lib.step);
+    lib.linkLibC();
+    lib.linkSystemLibrary("zlib");
+    b.installArtifact(lib);
 
     const tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-    lib.link(tests, .{});
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&tests.step);
 
     const bin = b.addExecutable(.{
         .name = "example1",
-        .root_source_file = .{ .path = "example/example1.zig" },
+        .root_source_file = b.path("example/example1.zig"),
         .target = target,
         .optimize = optimize,
     });
-    lib.link(bin, .{ .import_name = "zlib" });
+    const zlib_module = b.addModule("zlib", .{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    bin.root_module.addImport("zlib", zlib_module);
+    bin.linkLibrary(lib);
+    lib.linkSystemLibrary("zlib");
     b.installArtifact(bin);
-}
-
-/// Path to the directory with the build.zig.
-fn thisDir() []const u8 {
-    return std.fs.path.dirname(@src().file) orelse unreachable;
 }
